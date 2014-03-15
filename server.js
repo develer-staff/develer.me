@@ -2,6 +2,7 @@ var log = require('bookrc');
 var express = require('express');
 var bouncy = require('bouncy');
 var taters = require('taters');
+var jade = require('jade');
 var enchilada = require('enchilada');
 var stylish = require('stylish');
 var makeover = require('makeover');
@@ -125,7 +126,7 @@ module.exports = function(opt) {
 
     var app = express();
 
-    app.set('view engine', 'html');
+    app.set('view engine', 'jade');
     app.set('views', __dirname + '/views');
     app.engine('html', require('hbs').__express);
 
@@ -149,7 +150,6 @@ module.exports = function(opt) {
         cache: kProduction
     }));
 
-    app.use('/css/widgets.css', makeup(__dirname + '/static/css/widgets.css'));
     app.use(express.static(__dirname + '/static'));
 
     app.use(app.router);
