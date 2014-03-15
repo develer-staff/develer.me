@@ -1,2 +1,2 @@
 #!/bin/bash
-harp compile public -o ../static
+node_modules/.bin/harp compile public -o ../static

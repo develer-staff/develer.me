@@ -26,7 +26,8 @@
     "bouncy": "3.2.1",
     "superstack": "0.0.4",
     "stylish": "0.4.1",
-    "makeover": "0.0.1"
+    "makeover": "0.0.1",
+    "harp": "~0.11.2"
   },
   "devDependencies": {
     "mocha": "1.14.0",
