@@ -38,7 +38,7 @@ var auxports = [];
 if(argv.auxports) {
     auxports = argv.auxports.toString().split(' ');
 }
-if(argv.gulp) {
+if(argv.livereload) {
     auxports.push('35729');
 }
 
