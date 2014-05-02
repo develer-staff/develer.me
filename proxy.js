@@ -109,6 +109,12 @@ var Proxy = function(opt, cb) {
             socket.end();
         });
 
+        (function(current_socket) {
+            current_socket.interval = setInterval(function() {
+                current_socket.write('ACK');
+            }, 60000 );
+        })(socket);
+
         self.sockets.push(socket);
 
         var wait_cb = self.waiting.shift();
