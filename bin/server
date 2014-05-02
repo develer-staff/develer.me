@@ -6,6 +6,10 @@ var debug = require('debug')('localtunnel');
 
 var argv = optimist
     .usage('Usage: $0 --port [num]')
+    .options('auxports', {
+        default: '',
+        describe: 'aux ports'
+    })
     .options('secure', {
         default: false,
         describe: 'use this flag to indicate proxy over https'
@@ -29,6 +33,27 @@ var server = require('../server')({
 server.listen(argv.port, function() {
     debug('server listening on port: %d', server.address().port);
 });
+
+var auxports = [];
+if(argv.auxports) {
+    auxports = argv.auxports.toString().split(' ');
+}
+if(argv.gulp) {
+    auxports.push('35729');
+}
+
+for (var i = 0 ; i < auxports.length ; i++) {
+    (function(port) {
+        var server = require('../server')({
+            max_tcp_sockets: 10,
+            secure: argv.secure
+        });
+
+        server.listen(port, function() {
+            debug('server listening on port: %d', server.address().port);
+        });
+    })(auxports[i]);
+}
 
 // vim: ft=javascript
 
