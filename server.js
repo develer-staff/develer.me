@@ -26,7 +26,7 @@ var stats = {
     tunnels: 0,
 };
 
-function maybe_bounce(req, res, bounce) {
+function maybe_bounce(req, res, bounce, port) {
     // without a hostname, we won't know who the request is for
     var hostname = req.headers.host;
     if (!hostname) {
@@ -41,7 +41,11 @@ function maybe_bounce(req, res, bounce) {
         return false;
     }
 
-    var client_id = match[1];
+    var client_id = ''
+    if(port)
+        client_id = match[1] + ':' + port;
+    else
+        client_id = match[1]
     var client = clients[client_id];
 
     // no such subdomain
@@ -91,8 +95,13 @@ function new_client(id, opt, cb) {
 
     // can't ask for id already is use
     // TODO check this new id again
+
     if (clients[id]) {
-        id = rand_id();
+        if (opt.port) {
+            id = id + ':' + opt.port;
+        } else {
+            id = rand_id();
+        }
     }
 
     var popt = {
@@ -179,7 +188,6 @@ module.exports = function(opt) {
 
     app.get('/:req_id', function(req, res, next) {
         var req_id = req.param('req_id');
-
         if (! /[A-Za-z0-9]{4,10}/.test(req_id)) {
             return next();
         }
@@ -238,10 +246,9 @@ module.exports = function(opt) {
         debug('request %s', req.url);
 
         // if we should bounce this request, then don't send to our server
-        if (maybe_bounce(req, res, bounce)) {
+        if (maybe_bounce(req, res, bounce, opt.port)) {
             return;
         };
-
         bounce(app_port);
     });
 
