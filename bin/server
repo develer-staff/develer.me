@@ -46,7 +46,8 @@ for (var i = 0 ; i < auxports.length ; i++) {
     (function(port) {
         var server = require('../server')({
             max_tcp_sockets: 10,
-            secure: argv.secure
+            secure: argv.secure,
+            port:port
         });
 
         server.listen(port, function() {
