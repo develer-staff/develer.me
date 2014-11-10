@@ -1,9 +1,9 @@
 var http = require('http');
 var url = require('url');
 var assert = require('assert');
+var localtunnel = require('localtunnel');
 
 var localtunnel_server = require('../server')();
-var localtunnel_client = require('localtunnel');
 
 var lt_server_port
 
@@ -13,6 +13,33 @@ test('setup localtunnel server', function(done) {
         console.log('lt server on:', lt_server_port);
         done();
     });
+});
+
+test('landing page', function(done) {
+    var opt = {
+        host: 'localhost',
+        port: lt_server_port,
+        headers: {
+            host: 'example.com'
+        },
+        path: '/'
+    }
+
+    var req = http.request(opt, function(res) {
+        res.setEncoding('utf8');
+        var body = '';
+
+        res.on('data', function(chunk) {
+            body += chunk;
+        });
+
+        res.on('end', function() {
+            assert(body.indexOf('<h2>expose yourself to the world</h2>') > 0);
+            done();
+        });
+    });
+
+    req.end();
 });
 
 test('setup local http server', function(done) {
@@ -31,19 +58,15 @@ test('setup local http server', function(done) {
 });
 
 test('setup localtunnel client', function(done) {
-
-    var client = localtunnel_client.connect({
+    var opt = {
         host: 'http://localhost:' + lt_server_port,
-        port: test._fake_port
-    });
+    };
 
-    client.on('url', function(url) {
+    localtunnel(test._fake_port, opt, function(err, tunnel) {
+        assert.ifError(err);
+        var url = tunnel.url;
         assert.ok(new RegExp('^http:\/\/.*localhost:' + lt_server_port + '$').test(url));
         test._fake_url = url;
-        done();
-    });
-
-    client.on('error', function(err) {
         done(err);
     });
 });
@@ -56,7 +79,7 @@ test('query localtunnel server w/ ident', function(done) {
         host: 'localhost',
         port: lt_server_port,
         headers: {
-            host: hostname
+            host: hostname + '.tld'
         },
         path: '/'
     }
@@ -81,19 +104,30 @@ test('query localtunnel server w/ ident', function(done) {
 });
 
 test('request specific domain', function(done) {
-    var client = localtunnel_client.connect({
+    var opt = {
         host: 'http://localhost:' + lt_server_port,
-        port: test._fake_port,
         subdomain: 'abcd'
-    });
+    };
 
-    client.on('url', function(url) {
-        assert.ok(new RegExp('^http:\/\/abcd.localhost:' + lt_server_port + '$').test(url));
+    localtunnel(test._fake_port, opt, function(err, tunnel) {
+        assert.ifError(err);
+        var url = tunnel.url;
+        assert.ok(new RegExp('^http:\/\/.*localhost:' + lt_server_port + '$').test(url));
+        test._fake_url = url;
+        done(err);
+    });
+});
+
+test('request domain that is too long', function(done) {
+    var opt = {
+        host: 'http://localhost:' + lt_server_port,
+        subdomain: 'thisdomainisoutsidethesizeofwhatweallow'
+    };
+
+    localtunnel(test._fake_port, opt, function(err, tunnel) {
+        assert(err);
+        assert.equal(err.message, 'Invalid subdomain. Subdomains must be between 4 and 20 alphanumeric characters.');
         done();
-    });
-
-    client.on('error', function(err) {
-        console.error(err);
     });
 });
 

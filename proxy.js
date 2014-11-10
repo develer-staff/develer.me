@@ -106,7 +106,8 @@ var Proxy = function(opt, cb) {
 
         // close will be emitted after this
         socket.on('error', function(err) {
-            socket.end();
+            // we don't log here to avoid logging crap for misbehaving clients
+            socket.destroy();
         });
 
         (function(current_socket) {
@@ -144,8 +145,14 @@ Proxy.prototype.next_socket = function(cb) {
         return self.waiting.push(cb);
     }
 
+    var done_called = false;
     // put the socket back
     function done() {
+        if (done_called) {
+            throw new Error('done called multiple times');
+        }
+
+        done_called = true;
         if (!sock.destroyed) {
             debug('retuning socket');
             self.sockets.push(sock);

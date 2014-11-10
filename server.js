@@ -7,8 +7,9 @@ var enchilada = require('enchilada');
 var stylish = require('stylish');
 var makeover = require('makeover');
 var makeup = require('makeup');
-var engine = require('engine.io');
 var browserkthx = require('browserkthx');
+var tldjs = require('tldjs');
+var on_finished = require('finished');
 var debug = require('debug')('localtunnel-server');
 
 var Proxy = require('./proxy');
@@ -17,13 +18,11 @@ var rand_id = require('./lib/rand_id');
 var kProduction = process.env.NODE_ENV === 'production';
 
 // id -> client http server
-var clients = {};
+var clients = Object.create(null);
 
 // proxy statistics
 var stats = {
-    requests: 0,
-    waiting: 0,
-    tunnels: 0,
+    tunnels: 0
 };
 
 function maybe_bounce(req, res, bounce) {
@@ -33,15 +32,12 @@ function maybe_bounce(req, res, bounce) {
         return false;
     }
 
-    var match = hostname.match(/^([a-z0-9]{4,10})[.].+[.].+/);
-
-    // not for a specific client
-    // pass on to regular server
-    if (!match) {
+    var subdomain = tldjs.getSubdomain(hostname);
+    if (!subdomain) {
         return false;
     }
 
-    var client_id = match[1];
+    var client_id = subdomain;
     var client = clients[client_id];
 
     // no such subdomain
@@ -49,23 +45,33 @@ function maybe_bounce(req, res, bounce) {
     if (!client) {
         res.statusCode = 502;
         res.end('localtunnel error: no active client for \'' + client_id + '\'');
+        req.connection.destroy();
         return true;
     }
 
-    ++stats.requests;
-
-    res.once('close', function() {
-        --stats.requests;
+    // flag if we already finished before we get a socket
+    // we can't respond to these requests
+    var finished = false;
+    on_finished(res, function(err) {
+        finished = true;
+        req.connection.destroy();
     });
 
     // get client port
     client.next_socket(function(socket, done) {
+        done = done || function() {};
+
+        // the request already finished or client disconnected
+        if (finished) {
+            return done();
+        }
+
         // happens when client upstream is disconnected
         // we gracefully inform the user and kill their conn
         // without this, the browser will leave some connections open
         // and try to use them again for new requests
         // we cannot have this as we need bouncy to assign the requests again
-        if (!socket) {
+        else if (!socket) {
             res.statusCode = 504;
             res.end();
             req.connection.destroy();
@@ -76,11 +82,21 @@ function maybe_bounce(req, res, bounce) {
 
         stream.on('error', function(err) {
             socket.destroy();
+            req.connection.destroy();
+            done();
         });
 
         // return the socket to the client pool
         stream.once('end', function() {
             done();
+        });
+
+        on_finished(res, function(err) {
+            if (err) {
+                req.connection.destroy();
+                socket.destroy();
+                done();
+            }
         });
     });
 
@@ -169,7 +185,7 @@ module.exports = function(opt) {
 
             var url = schema + '://' + req_id + '.' + req.headers.host;
             info.url = url;
-            res.end(JSON.stringify(info));
+            res.json(info);
         });
     });
 
@@ -180,59 +196,37 @@ module.exports = function(opt) {
     app.get('/:req_id', function(req, res, next) {
         var req_id = req.param('req_id');
 
-        if (! /[A-Za-z0-9]{4,10}/.test(req_id)) {
-            return next();
+        // limit requested hostnames to 20 characters
+        if (! /^[A-Za-z0-9]{4,20}$/.test(req_id)) {
+            var err = new Error('Invalid subdomain. Subdomains must be between 4 and 20 alphanumeric characters.');
+            err.statusCode = 403;
+            return next(err);
         }
 
         debug('making new client with id %s', req_id);
         new_client(req_id, opt, function(err, info) {
             if (err) {
-                res.statusCode = 500;
-                return res.end(err.message);
+                return next(err);
             }
 
             var url = schema + '://' + req_id + '.' + req.headers.host;
             info.url = url;
-            res.end(JSON.stringify(info));
+            res.json(info);
         });
 
+    });
+
+    app.use(function(err, req, res, next) {
+        var status = err.statusCode || err.status || 500;
+        res.status(status).json({
+            message: err.message
+        });
     });
 
     var app_port = 0;
     var app_server = app.listen(app_port, function() {
         app_port = app_server.address().port;
     });
-
-    // connected engine.io sockets for stats updates
-    var eio_sockets = [];
-
-    setInterval(function() {
-        eio_sockets.forEach(function(socket) {
-            socket.send(JSON.stringify(stats));
-        });
-    }, 1000);
-
-    var eio_server = engine.attach(app_server);
-    eio_server.on('connection', function (socket) {
-
-        eio_sockets.push(socket);
-        socket.send(JSON.stringify(stats));
-
-        socket.on('error', function(err) {
-            log.error(err);
-            socket.close();
-        });
-
-        socket.on('close', function() {
-
-            // remove from socket pool so no more updates are sent
-            var idx = eio_sockets.indexOf(socket);
-            if (idx >= 0) {
-                eio_sockets.splice(idx, 1);
-            }
-        });
-    });
-
 
     var server = bouncy(function(req, res, bounce) {
         debug('request %s', req.url);
